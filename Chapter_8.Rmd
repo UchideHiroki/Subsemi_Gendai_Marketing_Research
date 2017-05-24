@@ -1,0 +1,84 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r read data}
+conjoint1 <- read.table("http://yuhikaku-nibu.txt-nifty.com/blog/files/conjoint1.txt", header = TRUE)
+conjoint2 <- read.table("http://yuhikaku-nibu.txt-nifty.com/blog/files/conjoint2.txt", header = TRUE)
+```
+
+```{r activate library}
+library(dplyr)
+library(Rcmdr)
+library(ggplot2)
+library(conjoint)
+```
+
+```{r multiple regression}
+RegModel.1 <- lm(全体効用~X2年+X4時間+X6時間+シルバー+赤, data=conjoint1)
+summary(RegModel.1)
+```
+
+```{r show graphs of summary}
+part_utility <- as.data.frame(RegModel.1$coefficients)
+part_utility[7,] = 0
+part_utility[8,] = 0
+part_utility[9,] = 0
+rownames(part_utility) <- c("(Intercept)","X2年","X4時間","X6時間","シルバー","赤","X2時間","X1年","黒")
+colnames(part_utility) <- "PartUtility"
+o <- c("X2年","X1年","X6時間","X4時間","X2時間","赤","シルバー","黒","(Intercept)")
+part_utility2 <- part_utility[c(2,8,4,3,7,6,5,9,1),]
+part_utility2 <- as.data.frame(part_utility2)
+rownames(part_utility2) <-o
+colnames(part_utility2) <- "PartUtility"
+mean <- c(
+  mean(part_utility2[1:2,]),
+  mean(part_utility2[1:2,]),
+  mean(part_utility2[3:5,]),
+  mean(part_utility2[3:5,]),
+  mean(part_utility2[3:5,]),
+  mean(part_utility2[6:8,]),
+  mean(part_utility2[6:8,]),
+  mean(part_utility2[6:8,]),
+  part_utility2[9,])
+part_utility2 <- cbind(part_utility2,mean)
+
+#write.csv(part_utility2, file="part_utility.csv",fileEncoding = "CP932")
+```
+
+
+```{r Conjoint Analysis based on Orthogonal Table}
+#<演習1:直行表に基づいた実験計画>
+# 指定した属性全ての組み合わせでカードを作っちゃうと・・・
+experiment <- expand.grid(レンズ=c("交換式", "固定"),ミラー = c("一眼レフ", "ミラーレス"),本体の色 = c("黒", "黄色"),センサーサイズ = c("APS-C", "マイクロフォーサーズ"),HDR機能 = c("無し", "有り"),電子水準器 = c("無し", "有り"),動画撮影 = c("無し", "有り"),WiFi = c("無し", "有り"))
+
+#そこでconjoint::caFactorialDesign()を使う。typeに「orthogonal」を指定すると直交表に基づく組み合わせに
+Orthogonaltable <- caFactorialDesign(data= experiment, type="orthogonal")
+
+#まじで直行してる？水準をコード化して確認しよう
+caEncodedDesign(Orthogonaltable)
+
+#念のため、各列間の相関係数も計算して直行してるこを確認
+cor(caEncodedDesign(Orthogonaltable))
+#まじで直行してそう、このパッケージで実験計画を立てられそう
+```
+
+
+```{r}
+#<演習2:サンプルデータを用いたコンジョイント分析演習>
+#今回は「重回帰分析」を使う最も簡単な事例
+
+#conjointに入ってるサンプルデータの確認
+data(tea)      #サンプルデータの確認
+print(tprof)   #組み合わせの表示(今回は13のプロファイル)
+print(tlevn)    #各水準のラベル
+head(tprefm)   #100人*13組み合わせの「選好マトリックス」、数値が高いほど高評価
+
+#分析：今回は古典的最小二乗法を用いた重回帰分析、パッケージの問題でこれだけコンソールで実行してください
+Conjoint(tprefm, tprof, tlevn)
+
+#＜参考＞CONJOINTの便利な機能：例)kmeansを用いたクラスター分析
+segments = caSegmentation(tprefm, tprof, 4)
+segments
+```

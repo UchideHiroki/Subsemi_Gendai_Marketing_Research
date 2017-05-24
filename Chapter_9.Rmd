@@ -1,0 +1,122 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r read}
+#データセットの読み込み
+Dataset <- read.table("http://yuhikaku-nibu.txt-nifty.com/blog/files/Bass.txt", sep = ",", header = TRUE)
+Dataset
+#ライブラリーの読み込み
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+```
+
+6.1 回帰分析
+```{r Multiple Linear Rregression}
+#バスモデルに基づく重回帰分析を行う、回帰モデルについては教科書P202~205を参照
+#P209で回帰モデルを使った予測値と実績値を比べるため、今回はデータの上10行を使って分析を行う
+lm <- lm(formula = 購買者数 ~ 一期前累積購買者数 + 一期前累積購買者数の二乗, data = Dataset[1:10,])
+summary(lm)
+```
+
+
+
+```{r estimate variables}
+#購買者数と予測値の推移を比較する
+#まずは重回帰分析の結果からm,p,q値を求める
+#重回帰分析の値を"Coe"に抜き出す
+Coe <- lm$coefficients
+#変数の名前のリストを作る
+Row <- c("m", "p", "q")
+#m,p,qをデータフレーム"parameter"に格納する
+Parameter <- as.data.frame(numeric(3))
+#名前を代入
+rownames(Parameter) <- Row
+#重回帰分析の結果(教科書でいうa,b,c)をm,p,qを求める式(教科書参照)に代入する
+Parameter[1,1] <- (-Coe[2]-(Coe[2]^2-4*Coe[1]*Coe[3])^(1/2))/(2*Coe[3])
+Parameter[2,1] <- Coe[1]/Parameter[1,1]
+Parameter[3,1] <- Parameter[2,1] + Coe[2]
+#重回帰分析の結果を用いて購買者数を予測し、元のデータと結合する
+Dataset <- within(Dataset, {
+  "予測" <- Coe[1] + Dataset$一期前累積購買者数*Coe[2] + Dataset$一期前累積購買者数の二乗*Coe[3]
+})
+#実績値(実際の購買者数)と予測値(回帰モデルから推定した購買者数)を比べる折れ線グラフを描く
+#実績値と予測値を折れ線グラフで描き表せるようmelt関数で表を描きなおす、実際に中身見てみると良い
+g <- melt(Dataset,
+          id = "時点",
+          measure = c(
+            "購買者数",
+            "予測"
+          ))
+#ggplot2で図を描けるようにおまじないを唱える
+#"g"の中身を見ればわかるが、variable=購買者数/予測値, value=値, となっている
+g <- ggplot(
+  g,
+  aes(
+    x =時点,
+    y =value,
+    color=variable,
+    group=variable)
+)
+#折れ線グラフを描くおまじない
+g <- g + geom_line()
+
+#ラベル名を追加
+g <- g + xlab("時点")
+g <- g + ylab("人数")
+#満を持してプロット
+plot(g)
+```
+予測値と実績値がほとんど一致していることがわかる
+
+6.2　パラメータの解釈
+```{r Difference of diffursion rate pattern made by "p" and "q"}
+#2つの普及率パターンA(p=0.2,q=0.05),B(p=0.05,q=0.2)を比べる折れ線グラフを作成する
+#まず、時点,Aの累積購買者数,Bの累積購買者数を代入する空のデータフレームを作成する
+Dataset2 <- data.frame(t=1:25, A=0, B=0)
+#次に、パターンAの値をデータフレームに代入する
+#ちなみに、pは革新的購買者に対する変数,qは模倣的購買者に対する,mは潜在市場規模である
+#数値の定義
+pa=0.2
+qa=0.05
+m=48932
+#ループの都合上、第1期における値を先に求める
+#累積購買者数を求める式は教科書p203を参照
+Dataset2[1,2] <- pa*m
+#第2期~25期はループを用いて求める
+for (i in 2:25){
+  Dataset2[i,2] <- Dataset2[i-1,2] + pa*(m-Dataset2[i-1,2])+qa*(Dataset2[i-1,2]/m)*(m-Dataset2[i-1,2])
+}
+#最後に、パターンBの値をデータフレームに代入する
+#パターンAと同じ処理を行うので説明は省略
+pb=0.05
+qb=0.2
+mb=48932
+Dataset2[1,3] <- pb*m
+for (i in 2:25){
+  Dataset2[i,3] <- Dataset2[i-1,3] + pb*(m-Dataset2[i-1,3])+qb*(Dataset2[i-1,3]/m)*(m-Dataset2[i-1,3])
+}
+
+#出来上がったデータフレーム「Dataset2」を用いて折れ線グラフを作成する
+#作成方法は45~70行と全く一緒
+g2 <- melt(Dataset2,
+           id = "t",
+           measure = c("A","B"
+           ))
+g2 <- ggplot(
+  g2,
+  aes(
+    x =t,
+    y =value,
+    color=variable,
+    group=variable)
+)
+g2 <- g2 + geom_line()
+
+
+g2 <- g2 + xlab("累積購買者数")
+g2 <- g2 + ylab("経過時期")
+plot(g2)
+```

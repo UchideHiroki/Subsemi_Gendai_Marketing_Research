@@ -1,0 +1,112 @@
+```{r read}
+RFM <- read.table("http://yuhikaku-nibu.txt-nifty.com/blog/files/RFM.txt", header = TRUE, sep = ",")
+```
+
+
+
+```{r activate libraries}
+library(dplyr)
+library(ggplot2)
+library(Rcmdr)
+library(tidyverse) #様々なデータを素早く読み込むためのパッケージを集めたもの
+library(reshape2) #データの構造を変換するもの、今回はmelt専用
+```
+
+RFMデータの中身を見ると、各顧客の最新購買日、累計購買回数、累計購買価格が載っていることがわかる
+各顧客に対して、R,F,Mの数値を5段階に分類し、ランク付けを行う
+```{r put rank}
+
+#R,F,Mを5つのランクに分け、ランク用の列を追加する
+#ランクは数値ではなく水準であることを明記するため、データの型をファクターにしておく
+#これは分散分析の際に重要になる
+RFM <- within(RFM, {
+  M_Rank <- Recode(M, 
+  '0:49999 = "M_Rank1"; 50000:99999 = "M_Rank2"; 100000:299999 = "M_Rank3"; 300000:499999 = "M_Rank4"; else = "M_Rank5"',
+   as.factor.result=TRUE) #M_Rankの設定
+  F_Rank <- Recode(F,
+  '1 = "F_Rank1" ; 2 = "F_Rank2" ; 3:9 = "F_Rank3" ; 10:29 = "F_Rank4" ; else = "F_Rank5"',
+   as.factor.result = TRUE) #F_Rankの設定
+  R_Rank <- Recode(R,
+  '1:30 = "R_Rank5" ; 31:60 = "R_Rank4" ; 61:90 = "R_Rank3" ; 91:180 = "R_Rank2" ; else = "R_Rank1"',
+   as.factor.result = TRUE) #R_Rankの設定
+})
+```
+
+ランク用の列が表示された
+そこで、最新購買日が新しい人、昔の人といった違いが累計購買回数や累計購買価格とどのような関係があるのかを調べていく。
+```{r RFM}
+
+#R_Rank毎にM(累計購買価格)がどのように変化するか、箱ひげ図を作成する。
+#ggplot2を使用
+g <- ggplot(         #ggplot用のデータを作成
+  RFM,
+  aes (
+    x = R_Rank,
+    y = M
+  )
+)
+g <- g + geom_boxplot() #箱ひげ図を作成
+g <- g + ggtitle("R_Rankごとの累積購買金額の分布") #タイトル
+g <- g + xlab("R_Rank") #Xラベル
+g <- g + ylab("M")      #Yラベル
+plot(g)                 #箱ひげ図を図示
+
+#以下同様
+g2 <- ggplot(
+  RFM,
+  aes (
+    x = R_Rank,
+    y = F
+  )
+)
+g2 <- g2 + geom_boxplot()
+g2 <- g2 + ggtitle("R_Rankごとの累積購買回数の分布")
+g2 <- g2 + xlab("R_Rank")
+g2 <- g2 + ylab("F")
+plot(g2)
+```
+
+最新購買日は累計購買価格とはそれほど関係が無いが、累計購買頻度と大きな関係があることがわかった。
+次に、分散分析を行う。
+
+```{r analysis of variance: ANOVA}
+library(multcomp)
+library(stats)
+library(RcmdrMisc)
+
+#分散分析を行う
+#今回はR_Rank毎にM(累計購買価格)の群を作り、その平均値が異なるかどうかを分散を用いて分析する。
+#一元配置分散分析とは複数(かもしれない)の要因を一元(一つの要因)として分散分析を行うこと。
+#R_Rankという要因がMに影響を与えているかを分析する。
+AnovaModel.1 <- aov(M ~ R_Rank, data=RFM) #分散分析
+print(summary(AnovaModel.1)) #分散分析結果の表示
+#各グループのM値の平均、標準偏差、個数を出す
+numSummary(RFM$M, groups=RFM$R_Rank, statistics=c("mean", "sd"))
+
+#分散分析は要因の効果が有意かを確かめるものであり、条件間の差を検定するものではない。
+#そこで、どの要因が効いているかを調べるため多重比較を行う
+.Pairs <- glht(AnovaModel.1, linfct = mcp(R_Rank = "Tukey")) #多重比較,一般化線形仮説,
+print(summary(.Pairs)) #多重比較結果の表示
+#信頼区間を推定する
+print(confint(.Pairs)) #数値の表示
+plot(confint(.Pairs)) #図示
+```
+
+最後のプロット結果から分かるように、(R_Rank1,R_Rank2)と(R_Rank4,R_Rank5)のグループ間にはMの差が存在することがわかる。
+同様のことをFでも行ってね。
+
+最後に、顧客に対するターゲティング戦略としてロジスティック回帰分析を行う。
+DMを開いた(1)、開いてない(2)を目的変数、R,F,Mを説明変数と置く。
+
+```{r Rogistic Regression}
+#一般化線形モデルglm()を用いる
+#一般化線形モデルとは応答変数=目的変数=被説明変数=Yの分布が様々なクラスに対して回帰分析を行うためのモデル
+#今回の応答変数はDM開封の(0,1)なので二項分布(binominal)のlogit関数を使う
+#ロジスティック回帰モデルに基づき、オッズ比の対数=
+#http://cse.naro.affrc.go.jp/takezawa/r-tips/r/72.html
+GLM.2 <- glm(DM ~ log(M)+log(F)+log(R), family=binomial(logit), data=RFM) #ロジスティック回帰の実行
+summary(GLM.2)     #結果の表示
+exp(coef(GLM.2))   #係数の指数をとる(モデルで使用したlogを外す)
+```
+
+

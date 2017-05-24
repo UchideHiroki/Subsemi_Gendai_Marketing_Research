@@ -1,0 +1,42 @@
+
+
+
+```{r activate libraries}
+library(dplyr)
+library(ggplot2)
+library(Rcmdr)
+library(tidyverse) #様々なデータを素早く読み込むためのパッケージを集めたもの
+library(reshape2) #データの構造を変換するもの
+library(mlogit) #多項ロジット・モデルのためのパッケージ
+```
+
+
+
+```{r read}
+BinomialChoice <- read.table("http://yuhikaku-nibu.txt-nifty.com/blog/files/binomial-choice.txt", header = TRUE)
+```
+
+
+
+```{r GeneralLinearModel:GLM}
+GLM.1 <- glm(B1 ~ P1-P2, family = binomial(logit), data = BinomialChoice)
+summary(GLM.1)
+```
+
+
+
+```{r read Catsup}
+data(Catsup)
+head(Catsup)
+Catsup %>%
+  group_by(choice) %>%
+  summarise(count=n())   #heinz32大人気!
+```
+
+
+
+```{r MultiLogitModel}
+Catdata <- mlogit.data(Catsup, choice = "choice", shape = "wide", varying = c(2:13), sep = ".")
+Cat1 <- mlogit(choice ~ disp + feat + price, data = Catdata)
+summary(Cat1)
+```

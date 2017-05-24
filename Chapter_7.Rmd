@@ -1,0 +1,72 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r Install and Activate R Commander}
+install.packages(Rcmdr)
+library(Rcmdr)
+```
+
+
+```{r Import Dataset}
+#予めデータセットを任意の場所に保存しておき、Shift+右クリック→パスとしてコピー
+#今回は絶対パスで読み込む
+sgt<- read.table("C:/Users/hiro5/Rstudio/Subsemi_Gendai_Marketing_Research/seg.txt",header = T, sep = ",")
+sgt
+```
+
+
+```{r Principal Component Analysis}
+#因子分析に必要な因子数を決定するため、まずは平行分析を行う
+#install.packages("psych")
+library(psych)
+fa.parallel(sgt[,2:28], fa = "pc", cor = "cov", n.iter = 100)
+
+#破線と点線を上回る固有値の数は4つであるため、因子数を4つに設定する
+```
+
+
+```{r Factotr Analysis}
+#因子数4で因子分析を行う
+sgt.fac<-factanal(sgt[,2:28],factors = 4, scores = "regression", rotation = "promax")
+sgt.fac
+barplot(sgt.fac$loadings[,1],col="lightblue")#インターネットでの情報の良しあし
+barplot(sgt.fac$loadings[,2],col="lightblue")#収益期待の高低
+barplot(sgt.fac$loadings[,3],col="lightblue")#政治状況の安定性
+barplot(sgt.fac$loadings[,4],col="lightblue")#口コミ情報の有無
+```
+
+
+```{r Cluster Analysis}
+#まず元データに因子分析の結果を結合させる
+sgt<-within(sgt,{
+  F1<-sgt.fac$scores[,1]
+  F2<-sgt.fac$scores[,2]
+  F3<-sgt.fac$scores[,3]
+  F4<-sgt.fac$scores[,4]
+})
+#k-meansを行う
+sgt.km<- kmeans(sgt[,c("F1","F2","F3","F4")], 4, iter.max = 10, nstart = 10)
+#元データにクラスタリング結果を結合させる
+sgt<-within(sgt,{
+  Group<-sgt.km$cluster
+})
+```
+
+
+```{r Summarize}
+#ライブラリのアクティベート
+library(dplyr)
+#各クラスターごとの重心と人数
+sgt.CG<- as.data.frame(sgt.km$centers)
+sgt.num<- sgt%>%
+  group_by(Group)%>%
+  summarise(count=n())
+sgt.CG<-cbind(sgt.CG,sgt.num[,2])
+rownames(sgt.CG)<-c("セグメント1","セグメント2","セグメント3","セグメント4")
+colnames(sgt.CG)<-c("IN情報","収益期待","政治状況","口コミ情報","人数")
+sgt.CG
+#性別比率
+
+```
